@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 SQLALCHEMY_DATABASE_URL = os.environ.get("SQLALCHEMY_DATABASE_URI") or (
@@ -34,10 +34,4 @@ def get_db():
     try:
         yield db
     finally:
-        db.close
-
-def ensure_postgis(eng=engine):
-    if eng.dialect.name != "postgresql":
-        return
-    with eng.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        db.close()

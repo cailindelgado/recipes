@@ -11,8 +11,6 @@ class Names(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
 
-    ingredients = relationship("Ingredients", backref="recipe")
-    steps = relationship("Steps", backref="recipe")
 
     def to_dict(self):
         return {"id": self.id, "name": self.name}
