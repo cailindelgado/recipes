@@ -46,11 +46,11 @@ def get_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
         return response(str(e), 500)
 
 
-@router.put("/", tags=["recipes"], status_code=201)
+@router.post("/", tags=["recipes"], status_code=201)
 def create_recipe(
     name: str,
     ingredients: dict[str, float],
-    steps: str,
+    steps: list[str],
     db: Session = Depends(database.get_db),
 ):
     try:
@@ -71,7 +71,7 @@ def create_recipe(
                 Ingredients(ingredient=ing, amount=amount)
                 for ing, amount in ingredients.items()
             ],
-            steps=[Steps(step=step) for step in steps],
+            steps=[Steps(steps=step) for step in steps],
         )
 
         db.add(recipe)
@@ -83,15 +83,16 @@ def create_recipe(
             "steps": [step.to_dict() for step in recipe.steps],
         }
     except Exception as e:
+        db.rollback()
         return response(str(e), 500)
 
 
-@router.post("/{recipe_id}", tags=["recipes"], status_code=200)
+@router.patch("/{recipe_id}", tags=["recipes"], status_code=200)
 def update_recipe(
     recipe_id: int,
-    name: str,
-    ingredients: dict[str, float],
-    steps: str,
+    name: str | None = None,
+    ingredients: dict[str, float] | None = None,
+    steps: list[str] | None = None,
     db: Session = Depends(database.get_db),
 ):
     try:
@@ -113,8 +114,8 @@ def update_recipe(
                 for ing, amount in ingredients.items()
             ]
 
-        if not steps:
-            recipe.steps = [step for step in steps]
+        if steps:
+            recipe.steps = [Steps(steps=step) for step in steps]
 
         db.commit()
         db.refresh(recipe)
@@ -126,6 +127,7 @@ def update_recipe(
         }
 
     except Exception as e:
+        db.rollback()
         return response(str(e), 500)
 
 
@@ -139,7 +141,87 @@ def delete_recipe(recipe_id: int, db: Session = Depends(database.get_db)):
 
         db.delete(recipe)
         db.commit()
-        return {"message": "Recipe deleted", "id": recipe_id}
+        return
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.post("/{recipe_id}/ingredients", status_code=200)
+def add_ingredient(
+    recipe_id: int,
+    ingredient: str,
+    amount: float,
+    db: Session = Depends(database.get_db),
+):
+    try:
+        recipe = db.get(Names, recipe_id)
+
+        if not recipe:
+            return response("Not found", 404)
+
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.patch("/{recipe_id}/ingredients/{ingredient_id}", status_code=200)
+def change_ingredient(
+    recipe_id: int,
+    ingredient_id: int,
+    ingredient: str,
+    amount: float,
+    db: Session = Depends(database.get_db),
+):
+    try:
+        pass
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.delete("/{recipe_id}/ingredients/{ingredient_id}", status_code=204)
+def delete_ingredient(
+    recipe_id: int, ingredient_id: int, db: Session = Depends(database.get_db)
+):
+    try:
+        pass
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.post("/{recipe_id}/steps", status_code=200)
+def add_step(
+    recipe_id: int,
+    step: str,
+    db: Session = Depends(database.get_db),
+):
+    try:
+        pass
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.patch("/{recipe_id}/steps/{step_id}", status_code=200)
+def change_step(
+    recipe_id: int,
+    step_id: int,
+    step: str,
+    db: Session = Depends(database.get_db),
+):
+    try:
+        pass
+    except Exception as e:
+        db.rollback()
+        return response(str(e), 500)
+
+
+@router.delete("/{recipe_id}/steps/{step_id}", status_code=204)
+def delete_step(recipe_id: int, step_id: int, db: Session = Depends(database.get_db)):
+    try:
+        pass
     except Exception as e:
         db.rollback()
         return response(str(e), 500)

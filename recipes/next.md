@@ -1,43 +1,66 @@
 # Recipes API — Next Steps
 
-Roadmap of endpoints and fixes to implement, roughly in priority order.
-Based on `recipes/recipes.py` and `recipes/model.py`.
+Roadmap of remaining endpoints and fixes.
+Last reviewed against the current `recipes/recipes.py` and `recipes/model.py`.
 
 ---
 
-## 0. Fix the existing surface first
+## 0. Remaining fixes in existing routes
 
-New endpoints will inherit the same confusion if these aren't cleaned up.
+### Done
+- `create_recipe` — now accepts `steps: list[str]` and builds `Steps(steps=...)`. ✓
+- `update_recipe` — now has a 404 guard, `db.commit()`, `db.refresh()`, and returns the updated body. ✓
+- `delete_recipe` — now deletes + commits, with a 404 guard and rollback. ✓
 
-### Bugs to fix
-- `create_recipe` — `Steps(step=step)` should be `Steps(steps=step)` (the column is `steps`).
-- `create_recipe` — `steps: str` is iterated character-by-character; change to `steps: list[str]`.
-- `update_recipe` — inverted `if not name:` (updates only when empty). Use presence checks.
-- `update_recipe` — never calls `db.commit()`, so changes are discarded.
-- `update_recipe` — no 404 guard; `db.get()` can return `None`.
-- `delete_recipe` — body is `pass`; it deletes nothing.
+### `update_recipe` — still to fix
+- `steps: str` should be `steps: list[str]` (a string is iterated character-by-character).
+- `if not steps:` is inverted. It should be `if steps:` so the block runs when steps *are* provided.
+- `recipe.steps = [step for step in steps]` creates a list of raw values, not `Steps` rows. Use:
+  ```python
+  if steps:
+      recipe.steps = [Steps(steps=step) for step in steps]
+  ```
+- Method is `POST /{recipe_id}`; prefer `PATCH /{recipe_id}`.
+- Add `db.rollback()` in the `except` block.
+- `name: str` is a required query param, so callers can't update only the ingredients. Make the fields optional / use the Pydantic pattern below.
 
-### Semantics / conventions
-- `PUT /` (create) -> prefer `POST /`.
-- `POST /{recipe_id}` (update) -> prefer `PATCH /{recipe_id}` (partial update).
-- `DELETE /{recipe_id}` -> return `204 No Content`, or keep `200` but be consistent.
+### `delete_recipe` — still to fix
+- `status_code=204` must not return a body. Either `return None` (with 204) or switch to `200` and keep the JSON message. Returning `{"message": ...}` under 204 is a protocol violation.
 
-### Partial-update pattern
+### `create_recipe` — minor
+- Add `db.rollback()` in the `except` block.
+- `PUT /` (create) -> prefer `POST /` for convention.
+
+### Partial-update pattern (for `update_recipe`)
 ```python
 class RecipeUpdate(BaseModel):
     name: str | None = None
     ingredients: dict[str, float] | None = None
     steps: list[str] | None = None
 
-# only fields the client actually sent:
-data = payload.model_dump(exclude_unset=True)
-if "name" in data:
-    recipe.name = data["name"]
+@router.patch("/{recipe_id}")
+def update_recipe(
+    recipe_id: int,
+    payload: RecipeUpdate,
+    db: Session = Depends(database.get_db),
+):
+    ...
+    # only fields the client actually sent:
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        recipe.name = data["name"]
+    if "ingredients" in data:
+        recipe.ingredients = [
+            Ingredients(ingredient=ing, amount=amount)
+            for ing, amount in data["ingredients"].items()
+        ]
+    if "steps" in data:
+        recipe.steps = [Steps(steps=step) for step in data["steps"]]
 ```
 
 ---
 
-## 1. Sub-resource CRUD for ingredients (and steps)
+## 1. Sub-resource CRUD for ingredients (and steps)  — TODO
 
 `Ingredients` / `Steps` already have their own ids, so expose them directly
 instead of only supporting "replace the whole list" on the parent route.
@@ -79,7 +102,7 @@ orphan handling and safer concurrent edits). You can keep both.
 
 ---
 
-## 2. Search & filtering on the list route
+## 2. Search & filtering on the list route  — TODO
 
 Extend `GET /` with query params rather than new paths:
 
@@ -90,7 +113,7 @@ Extend `GET /` with query params rather than new paths:
 
 ---
 
-## 3. Count / metadata
+## 3. Count / metadata  — TODO
 
 `GET /count` -> `{"count": db.query(Names).count()}`
 
@@ -98,7 +121,7 @@ Pairs with the existing `limit`/`offset` for pagination UIs.
 
 ---
 
-## 4. Convenience routes
+## 4. Convenience routes  — TODO
 
 - `GET /random` — `db.query(Names).order_by(func.random()).first()`
   (Postgres; use `func.rand()` on SQLite)
@@ -122,10 +145,11 @@ or FastAPI matches `count` as `recipe_id` and fails with a 422 (not an int).
 
 ---
 
-## 6. Cascade requirement (model.py)
+## 6. Cascade requirement (model.py)  — still TODO
 
-Replacing or deleting child rows requires delete-orphan cascade, otherwise old
-`Ingredients` / `Steps` rows are left behind with `recipe_id = NULL`:
+`model.py` still uses plain `backref="ingredients"` / `backref="steps"` with no
+cascade. Replacing or clearing child rows (as `update_recipe` does) leaves old
+rows behind with `recipe_id = NULL`. Add delete-orphan cascade:
 
 ```python
 from sqlalchemy.orm import relationship, backref
@@ -154,9 +178,12 @@ surface area before the core CRUD is clean.
 
 ## Suggested implementation order
 
-1. Fix the existing bugs in section 0 (commit, 404s, `steps` column, delete).
-2. Add delete-orphan cascade in `model.py` (section 6).
-3. `PATCH /{recipe_id}` partial update via `exclude_unset`.
-4. Ingredient sub-routes (`POST` / `PATCH` / `DELETE`).
-5. `GET /count`, then `GET /random`.
-6. Search/filter params on `GET /`.
+1. Finish `update_recipe`: `steps: list[str]`, `if steps:`, build `Steps(steps=...)`,
+   add `db.rollback()`.
+2. Fix `delete_recipe` (204 body) — either `return None` or use `200`.
+3. Add delete-orphan cascade in `model.py` (section 6).
+4. Convert update to `PATCH /{recipe_id}` with Pydantic `exclude_unset` (section 0).
+5. Ingredient sub-routes (`POST` / `PATCH` / `DELETE`).
+6. `GET /count`, then `GET /random` (mind section 5 ordering).
+7. Search/filter params on `GET /`.
+8. Rename `PUT /` -> `POST /` for create.
